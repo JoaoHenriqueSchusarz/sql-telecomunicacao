@@ -1,1 +1,0 @@
-# Rotatividade-de-clientes-de-telecomunicacoes
