@@ -1,3 +1,24 @@
+# Telco Customer Churn — Plano de Análises (MySQL + BI)
+
+## Objetivo
+
+Medir e explicar o churn de clientes e identificar segmentos de risco e alavancas de retenção (contrato, método de pagamento, serviços, preço e tempo de casa).
+
+## Perguntas de negócio (o que vou responder)
+
+* Qual é a taxa de churn global?
+* Como o churn varia por tipo de contrato (Monthly / One year / Two year)?
+* Método de pagamento (electronic check, credit card, bank transfer, mailed check) influencia o churn?
+* Qual o efeito de InternetService (DSL/Fiber/None) e de add-ons (OnlineSecurity, TechSupport, etc.) no churn?
+* SeniorCitizen, Partner, Dependents alteram a probabilidade de churn?
+* Faixas de preço (MonthlyCharges) x churn: onde o risco é maior?
+* Tenure (tempo de casa) x churn: qual a curva de sobrevivência? Onde ocorre o “vale” de maior risco?
+* Quais são as top 5 combinações de serviços com maior churn?
+* Quais segmentos têm churn acima da média (uplift) e devem ser priorizados?
+* Qual a perda de receita recorrente associada ao churn (aproximação)?
+* Entre clientes “Month-to-month”, quais métodos de pagamento elevam/baixam o risco?
+* PaperlessBilling impacta churn?
+
 # Tratamento e Qualidade dos Dados
 
 Fonte: WA_Fn-UseC_-Telco-Customer-Churn.csv (Kaggle)
