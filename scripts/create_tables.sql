@@ -30,7 +30,7 @@ LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/tele_churn/Telco
 INTO TABLE customer_churn
 CHARACTER SET utf8mb4
 FIELDS TERMINATED BY ','  OPTIONALLY ENCLOSED BY '"'
-LINES  TERMINATED BY '\n'
+LINES  TERMINATED BY '\r\n'   
 IGNORE 1 LINES
 (
   customerID,
@@ -66,14 +66,37 @@ SET
                    END;
 -- Tratamento dos dados nulos, remoção de espaços perdidos dentro dos números (ex.: 69 994.8 → 69994.80)
 
-SELECT * FROM customer_churn LIMIT 10;
-SELECT COUNT(*) AS total_rows FROM customer_churn;
-SELECT COUNT(*) AS missing_total_charges FROM customer_churn WHERE TotalCharges IS NULL;
-SELECT COUNT(*) AS missing_tenure FROM customer_churn WHERE tenure IS NULL;
-SELECT COUNT(*) AS missing_monthly_charges FROM customer_churn WHERE MonthlyCharges IS NULL;
-SELECT COUNT(*) AS missing_senior_citizen FROM customer_churn WHERE SeniorCitizen IS NULL;
-SELECT COUNT(*) AS missing
-FROM customer_churn
-WHERE   
-    customerID IS NULL
+-- Os dados foram obtidos do Kaggle: https://www.kaggle.com/datasets/blastchar/telco-customer-churn
+-- O arquivo CSV foi salvo na pasta de Uploads do MySQL para permitir a carga via comando LOAD DATA INFILE
 
+-- Verificação dos dados carregados
+SELECT * FROM customer_churn LIMIT 10;
+
+-- Verificação de dados nulos
+SELECT COUNT(*) AS Total_Null_MonthlyCharges FROM customer_churn WHERE MonthlyCharges IS NULL;
+SELECT COUNT(*) AS Total_Null_TotalCharges   FROM customer_churn WHERE TotalCharges IS NULL
+
+-- Base limpa + flag numérica de churn
+CREATE OR REPLACE VIEW telco_clean AS
+SELECT *,
+       CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END AS is_churn
+FROM customer_churn;
+
+-- Faixas de preço e tenure
+CREATE OR REPLACE VIEW telco_price_tenure AS
+SELECT *,
+  CASE
+    WHEN MonthlyCharges < 30 THEN '<30'
+    WHEN MonthlyCharges < 60 THEN '30–59'
+    WHEN MonthlyCharges < 90 THEN '60–89'
+    ELSE '90+'
+  END AS price_band,
+  CASE
+    WHEN tenure <= 1 THEN '0–1'
+    WHEN tenure <= 5 THEN '2–5'
+    WHEN tenure <= 11 THEN '6–11'
+    WHEN tenure <= 23 THEN '12–23'
+    WHEN tenure <= 47 THEN '24–47'
+    ELSE '48+'
+  END AS tenure_band
+FROM telco_clean;
