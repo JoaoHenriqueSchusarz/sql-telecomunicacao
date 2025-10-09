@@ -1,5 +1,27 @@
 # Telco Customer Churn — Plano de Análises (MySQL + BI)
 
+Este projeto utiliza o [Conjunto de dados público de retenção e controle de contratos em uma empresa de telecomunicação](https://www.kaggle.com/datasets/blastchar/telco-customer-churn), disponível no Kaggle.
+
+O dataset reúne informações de rotatividade para controle de retenção de clientes em uma empresa do ramo de telecomunicação, incluindo dados de:
+
+* customerID — ID do cliente
+* gender — Gênero
+* SeniorCitizen — Idoso (0/1)
+* Partner — Parceiro (Yes/No)
+* Dependents — Dependentes (Yes/No)
+* tenure — Tempo de permanência (meses)
+* PhoneService — Serviço telefônico
+* MultipleLines — Múltiplas linhas / Sem linha telefônica
+* InternetService — Serviço de internet (DSL/Fiber/No)
+* OnlineSecurity, OnlineBackup, DeviceProtection, TechSupport — Add-ons
+* StreamingTV, StreamingMovies — Streaming
+* Contract — Tipo de contrato (Month-to-month / One year / Two year)
+* PaperlessBilling — Faturamento digital
+* PaymentMethod — Método de pagamento
+* MonthlyCharges — Cobranças mensais
+* TotalCharges — Cobranças totais
+* Churn — Cancelamento (Yes/No)
+  
 ## Objetivo
 
 Medir e explicar o churn de clientes e identificar segmentos de risco e alavancas de retenção (contrato, método de pagamento, serviços, preço e tempo de casa).
