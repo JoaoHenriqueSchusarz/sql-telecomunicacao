@@ -70,13 +70,12 @@ Linhas com tenure = 0 podem ter TotalCharges vazio por serem clientes muito novo
 
 ## Carga com limpeza (MySQL)
 
-
 ```sql
 LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/tele_churn/Telco-Customer-Churn.csv'
 INTO TABLE customer_churn
 CHARACTER SET utf8mb4
 FIELDS TERMINATED BY ','  OPTIONALLY ENCLOSED BY '"'
-LINES  TERMINATED BY '\n'
+LINES  TERMINATED BY '\r\n'   
 IGNORE 1 LINES
 (
   customerID, gender, SeniorCitizen, Partner, Dependents, tenure,
@@ -98,3 +97,72 @@ SET
                    END;
 ```
 
+# Qual é a taxa de churn global?
+
+Definição: Percentual de clientes que cancelaram (`Churn = 'Yes'`) em relação ao total de clientes.
+
+Fórmula (conceito): `churn_global = (n_cancelados / n_total) * 100`
+
+## Query utilizada no MySQL
+
+```sql
+-- Qual é a taxa de churn global?
+
+WITH contagem AS (
+  SELECT
+    COUNT(customerID) AS customers,
+    SUM(Churn='Yes')  AS customers_churn 
+  FROM customer_churn
+)
+SELECT ROUND(customers_churn * 100.0 / customers, 2) AS churn_global_pct
+FROM contagem;
+```
+
+No MySQL, a expressão `Churn = 'Yes'` vira **1/0** (verdadeiro/falso). A média (`AVG`) desses valores retorna diretamente a **fração de cancelados**, evitando erros de **divisão inteira** e deixando o SQL mais limpo.
+
+<p align="center">
+  <img src="docs/customer_churn_taxaglobal.png" alt="Contagem de clientes Olist" style="max-width:80%;">
+</p>
+
+# Como o churn varia por tipo de contrato (Monthly / One year / Two year)?
+
+Pergunta: Como o churn varia entre `Month-to-month`, `One year` e `Two year`?
+
+Métrica utilizada: taxa de churn por contrato = (cancelados do contrato / clientes do contrato) × 100
+
+## Query utilizada no MySQL
+
+```sql
+SELECT  Contract,
+		COUNT(customerID) AS customers,
+		SUM(churn='Yes')  AS customers_churn,
+        ROUND(SUM(churn = 'Yes')*100 / COUNT(customerID),2) AS churn_rate 
+FROM customer_churn
+GROUP BY contract
+ORDER BY churn_rate DESC
+```
+
+<p align="center">
+  <img src="docs/customer_churn_contract.png" alt="Contagem de clientes Olist" style="max-width:80%;">
+</p>
+
+# Método de pagamento (electronic check, credit card, bank transfer, mailed check) influencia o churn?
+
+Pergunta: Métodos como `Electronic check`, `Credit card (automatic)`, `Bank transfer (automatic)` e `Mailed check` influenciam o churn?
+
+Métrica: taxa de churn por método = (cancelados do método / clientes do método) × 100.
+
+## Query utilizada no MySQL
+
+```sql
+SELECT  PaymentMethod,
+		COUNT(customerID) AS customers,
+		SUM(churn='Yes')  AS customers_churn,
+        ROUND(SUM(churn = 'Yes')*100 / COUNT(customerID),2) AS churn_rate 
+FROM customer_churn
+GROUP BY PaymentMethod
+ORDER BY churn_rate DESC
+```
+<p align="center">
+  <img src="docs/customer_churn_paymentmethod.png" alt="Contagem de clientes Olist" style="max-width:80%;">
+</p>
