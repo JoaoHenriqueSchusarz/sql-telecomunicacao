@@ -166,3 +166,133 @@ ORDER BY churn_rate DESC
 <p align="center">
   <img src="docs/customer_churn_paymentmethod.png" alt="Contagem de clientes Olist" style="max-width:80%;">
 </p>
+
+## Qual o efeito de InternetService (DSL/Fiber/None) e de Add-ons (OnlineSecurity, TechSupport, etc.) no churn?
+
+### Criação da view `telco_features`
+Para analisar todos os add-ons de forma comparável, criei uma view que transforma cada recurso em flags binárias (0/1). Assim fica simples contar bases, calcular taxas e comparar “tem” vs “não tem”.
+
+```sql
+CREATE OR REPLACE VIEW telco_features AS
+SELECT
+  customerID,
+  is_churn,                 -- 1 = churnou, 0 = permaneceu
+  InternetService,
+  CASE WHEN OnlineSecurity   = 'Yes' THEN 1 ELSE 0 END AS f_Security,
+  CASE WHEN OnlineBackup     = 'Yes' THEN 1 ELSE 0 END AS f_Backup,
+  CASE WHEN DeviceProtection = 'Yes' THEN 1 ELSE 0 END AS f_Protection,
+  CASE WHEN TechSupport      = 'Yes' THEN 1 ELSE 0 END AS f_Support,
+  CASE WHEN StreamingTV      = 'Yes' THEN 1 ELSE 0 END AS f_TV,
+  CASE WHEN StreamingMovies  = 'Yes' THEN 1 ELSE 0 END AS f_Movies
+FROM telco_clean;
+```
+Podemos fazer essa analise de duas formas, uma com diversas queries separadas e analisar cada, ou fazer apenas uma query montando uma tabela geral com uma análise mais focada.
+Decidi seguir com apenas uma query, assim conseguimos visualizar melhor o que cada dado representa.
+
+## Query utilizada no MySQL
+
+```sql
+WITH g AS (
+  SELECT SUM(is_churn)/COUNT(*) AS churn_global FROM telco_features
+)
+SELECT * FROM (
+  SELECT 'OnlineSecurity' AS feature,
+         SUM(f_Security)                                      AS users_with,
+         ROUND(SUM(CASE WHEN f_Security=1 THEN is_churn END) / NULLIF(SUM(f_Security),0),4)           AS churn_with,
+         ROUND(SUM(CASE WHEN f_Security=0 THEN is_churn END) / NULLIF(SUM(1-f_Security),0),4)         AS churn_without,
+         ROUND(
+           (SUM(CASE WHEN f_Security=1 THEN is_churn END)/NULLIF(SUM(f_Security),0)) -
+           (SUM(CASE WHEN f_Security=0 THEN is_churn END)/NULLIF(SUM(1-f_Security),0)),4)             AS uplift,
+         (SELECT churn_global FROM g) AS churn_global
+  FROM telco_features
+  UNION ALL
+  SELECT 'OnlineBackup',
+         SUM(f_Backup),
+         ROUND(SUM(CASE WHEN f_Backup=1 THEN is_churn END)/NULLIF(SUM(f_Backup),0),4),
+         ROUND(SUM(CASE WHEN f_Backup=0 THEN is_churn END)/NULLIF(SUM(1-f_Backup),0),4),
+         ROUND(
+           (SUM(CASE WHEN f_Backup=1 THEN is_churn END)/NULLIF(SUM(f_Backup),0)) -
+           (SUM(CASE WHEN f_Backup=0 THEN is_churn END)/NULLIF(SUM(1-f_Backup),0)),4),
+         (SELECT churn_global FROM g)
+  FROM telco_features
+  UNION ALL
+  SELECT 'DeviceProtection',
+         SUM(f_Protection),
+         ROUND(SUM(CASE WHEN f_Protection=1 THEN is_churn END)/NULLIF(SUM(f_Protection),0),4),
+         ROUND(SUM(CASE WHEN f_Protection=0 THEN is_churn END)/NULLIF(SUM(1-f_Protection),0),4),
+         ROUND(
+           (SUM(CASE WHEN f_Protection=1 THEN is_churn END)/NULLIF(SUM(f_Protection),0)) -
+           (SUM(CASE WHEN f_Protection=0 THEN is_churn END)/NULLIF(SUM(1-f_Protection),0)),4),
+         (SELECT churn_global FROM g)
+  FROM telco_features
+  UNION ALL
+  SELECT 'TechSupport',
+         SUM(f_Support),
+         ROUND(SUM(CASE WHEN f_Support=1 THEN is_churn END)/NULLIF(SUM(f_Support),0),4),
+         ROUND(SUM(CASE WHEN f_Support=0 THEN is_churn END)/NULLIF(SUM(1-f_Support),0),4),
+         ROUND(
+           (SUM(CASE WHEN f_Support=1 THEN is_churn END)/NULLIF(SUM(f_Support),0)) -
+           (SUM(CASE WHEN f_Support=0 THEN is_churn END)/NULLIF(SUM(1-f_Support),0)),4),
+         (SELECT churn_global FROM g)
+  FROM telco_features
+  UNION ALL
+  SELECT 'StreamingTV',
+         SUM(f_TV),
+         ROUND(SUM(CASE WHEN f_TV=1 THEN is_churn END)/NULLIF(SUM(f_TV),0),4),
+         ROUND(SUM(CASE WHEN f_TV=0 THEN is_churn END)/NULLIF(SUM(1-f_TV),0),4),
+         ROUND(
+           (SUM(CASE WHEN f_TV=1 THEN is_churn END)/NULLIF(SUM(f_TV),0)) -
+           (SUM(CASE WHEN f_TV=0 THEN is_churn END)/NULLIF(SUM(1-f_TV),0)),4),
+         (SELECT churn_global FROM g)
+  FROM telco_features
+  UNION ALL
+  SELECT 'StreamingMovies',
+         SUM(f_Movies),
+         ROUND(SUM(CASE WHEN f_Movies=1 THEN is_churn END)/NULLIF(SUM(f_Movies),0),4),
+         ROUND(SUM(CASE WHEN f_Movies=0 THEN is_churn END)/NULLIF(SUM(1-f_Movies),0),4),
+         ROUND(
+           (SUM(CASE WHEN f_Movies=1 THEN is_churn END)/NULLIF(SUM(f_Movies),0)) -
+           (SUM(CASE WHEN f_Movies=0 THEN is_churn END)/NULLIF(SUM(1-f_Movies),0)),4),
+         (SELECT churn_global FROM g)
+  FROM telco_features
+) t
+ORDER BY uplift DESC;
+```
+
+Com essa query mais estensa colocamos filtros diferentes usando o CASE WHEN para filtrar dados onde a função esta positiva (1), e quando esta negativa (0).
+
+<p align="center">
+  <img src="docs/customer_churn_internetandadd.png" alt="Contagem de clientes Olist" style="max-width:80%;">
+</p>
+
+A análise mostra que o tipo de serviço de internet e os add-ons contratados têm impacto direto nas taxas de churn:
+
+- InternetService
+  - Clientes com Fiber optic tendem a ter churn mais alto, possivelmente por causa de preço ou perfil mais sensível a custos.
+  - Clientes com DSL apresentam churn menor em comparação.
+  - Quem não possui serviço de internet geralmente apresenta churn ainda mais baixo, mas também têm ticket médio reduzido.
+
+- Add-ons de Segurança e Suporte
+  - OnlineSecurity e TechSupport estão associados a forte redução no churn (uplift negativo de até ~16 pontos percentuais).  
+  - Isso sugere que clientes que contam com proteção e suporte percebem mais valor e permanecem mais tempo.
+
+- Add-ons de Backup e Proteção
+  - OnlineBackup e DeviceProtection também reduzem o churn, mas em menor escala (cerca de −6 a −8 pp).  
+  - Ainda assim, contribuem para a fidelização.
+
+- Add-ons de Entretenimento
+  - StreamingTV e StreamingMovies estão associados a maior churn (uplift positivo de ~+6 pp).  
+  - Isso pode indicar que usuários que contratam apenas entretenimento são mais sensíveis a preço ou estão em planos de contrato mensal, mais fáceis de cancelar.
+
+### Interpretação
+- Add-ons de segurança e suporte funcionam como fatores de retenção, fortalecendo o vínculo do cliente.  
+- Add-ons de entretenimento aumentam o risco de saída, exigindo estratégias específicas (como bundles com segurança ou descontos em contratos anuais).  
+- O uplift mede essa diferença: se negativo, o recurso ajuda a reduzir churn; se positivo, aumenta o risco.  
+
+
+
+
+
+
+
+
