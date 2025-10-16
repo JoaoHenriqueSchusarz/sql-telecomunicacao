@@ -134,8 +134,6 @@ SELECT * FROM (
   FROM telco_features
 ) t
 ORDER BY uplift DESC;
-
-
 -- Só por tipo de internet
 SELECT
 		InternetService,
@@ -215,4 +213,199 @@ SELECT tenure_band,
 FROM contagem
 ORDER BY FIELD(tenure_band, '0–1', '2–5', '
 '6–11', '12–23', '24–47', '48+');8+');
--- Quais são os 5 serviços mais associados ao churn?  
+-- SeniorCitizen, Partner, Dependents alteram a probabilidade de churn?
+CREATE OR REPLACE VIEW telco_life AS 
+SELECT 
+  customerID,
+  is_churn,
+  SeniorCitizen,
+  CASE WHEN Partner    = 'Yes' THEN 1 ELSE 0 END AS is_partner,
+  CASE WHEN Dependents = 'Yes' THEN 1 ELSE 0 END AS is_dependents
+FROM telco_clean;
+
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_life
+)
+SELECT 
+		'SeniorCitizen' AS feature,
+        SUM(SeniorCitizen) AS users_with,
+		ROUND(SUM(CASE WHEN SeniorCitizen = 1 THEN is_churn END) / NULLIF(SUM(SeniorCitizen),0),4) AS churn_with,
+		ROUND(SUM(CASE WHEN SeniorCitizen = 0 THEN is_churn END) / NULLIF(SUM(1-SeniorCitizen),0),4) AS churn_without,
+        ROUND(
+			  (SUM(CASE WHEN SeniorCitizen = 1 THEN is_churn END) / NULLIF(SUM(SeniorCitizen),0)) -
+              (SUM(CASE WHEN SeniorCitizen = 0 THEN is_churn END) / NULLIF(SUM(1-SeniorCitizen),0)),4) AS uplift,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) AS global_churn
+FROM telco_life
+UNION ALL
+SELECT 
+		'Partner',
+        SUM(is_partner),
+		ROUND(SUM(CASE WHEN is_partner = 1 THEN is_churn END) / NULLIF(SUM(is_partner),0),4),
+		ROUND(SUM(CASE WHEN is_partner = 0 THEN is_churn END) / NULLIF(SUM(1-is_partner),0),4),
+		ROUND(
+			  (SUM(CASE WHEN is_partner = 1 THEN is_churn END) / NULLIF(SUM(is_partner),0)) -
+              (SUM(CASE WHEN is_partner = 0 THEN is_churn END) / NULLIF(SUM(1-is_partner),0)),4),
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g)
+FROM telco_life
+UNION ALL
+SELECT 
+		'Dependents',
+        SUM(is_dependents),
+		ROUND(SUM(CASE WHEN is_dependents= 1 THEN is_churn END) / NULLIF(SUM(is_dependents),0),4),
+		ROUND(SUM(CASE WHEN is_dependents= 0 THEN is_churn END) / NULLIF(SUM(1-is_dependents),0),4),
+		ROUND(
+			  (SUM(CASE WHEN is_dependents = 1 THEN is_churn END) / NULLIF(SUM(is_dependents),0)) -
+              (SUM(CASE WHEN is_dependents = 0 THEN is_churn END) / NULLIF(SUM(1-is_dependents),0)),4),
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g)
+FROM telco_life;
+-- analise dos valores mensais (MonthlyCharges)
+SELECT MAX(MonthlyCharges) AS max_charge,
+	   MIN(MonthlyCharges) AS min_charge,
+	   ROUND(AVG(MonthlyCharges),2) AS avg_charge
+FROM customer_churn;
+
+-- criação da view telco_price
+CREATE OR REPLACE VIEW telco_price AS
+SELECT 
+  customerID,
+  is_churn,
+  MonthlyCharges,
+  CASE 
+    WHEN MonthlyCharges <= 40 THEN 'low_price'
+    WHEN MonthlyCharges <= 80 THEN 'medium_price'
+    ELSE 'high_price'
+  END AS price_tier
+FROM telco_clean;
+
+-- análise do churn por faixa de preço
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_price
+)
+SELECT 
+		'Low Price' AS tier,
+		SUM(CASE WHEN price_tier = 'low_price' THEN 1 END) AS sum_tier,
+		ROUND(SUM(CASE WHEN price_tier = 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'low_price' THEN 1 END),0),4) AS churn_with,
+		ROUND(SUM(CASE WHEN price_tier <> 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'low_price' THEN 1 END),0),4) AS churn_without,
+		ROUND(
+				(SUM(CASE WHEN price_tier = 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'low_price' THEN 1 END),0)) -
+				(SUM(CASE WHEN price_tier <> 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'low_price' THEN 1 END),0)),4) AS uplift,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) AS global_churn
+FROM telco_price
+UNION ALL
+SELECT 
+		'Medium Price' ,
+		SUM(CASE WHEN price_tier = 'medium_price' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN price_tier = 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'medium_price' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN price_tier <> 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'medium_price' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN price_tier = 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'medium_price' THEN 1 END),0)) -
+				(SUM(CASE WHEN price_tier <> 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'medium_price' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_price
+UNION ALL
+SELECT 
+		'High Price' ,
+		SUM(CASE WHEN price_tier = 'high_price' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN price_tier = 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'high_price' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN price_tier <> 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'high_price' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN price_tier = 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'high_price' THEN 1 END),0)) -
+				(SUM(CASE WHEN price_tier <> 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'high_price' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_price;
+-- análise dos valores de tenure
+SELECT MAX(tenure) AS max_tenure,
+	   MIN(tenure) AS min_tenure,
+	   ROUND(AVG(tenure),2) AS avg_tenure
+FROM customer_churn;
+-- criação da view telco_tenure
+CREATE OR REPLACE VIEW telco_tenure AS
+SELECT 
+  customerID,
+  is_churn,
+  tenure,
+  CASE 
+    WHEN tenure <= 15 THEN 'low_tenure' 
+    WHEN tenure <= 35 THEN 'medium_tenure'
+    ELSE 'high_tenure'
+  END AS tenure_tier
+FROM telco_clean;
+-- análise do churn por faixa de tenure
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_tenure
+)
+SELECT 
+		'Low Tenure' AS tier,
+		SUM(CASE WHEN tenure_tier = 'low_tenure' THEN 1 END) AS sum_tenure,
+		ROUND(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN 1 END),0),4) AS churn_with,
+		ROUND(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN 1 END),0),4) AS churn_without,
+		ROUND(
+				(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN 1 END),0)) -
+				(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN 1 END),0)),4) AS uplift,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) AS global_churn
+FROM telco_tenure
+UNION ALL
+SELECT 
+		'Medium Tenure' ,
+		SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN tenure_tier ='medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN 1 END),0)) -
+				(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_tenure
+UNION ALL
+SELECT 
+		'High Tenure' ,
+		SUM(CASE WHEN tenure_tier = 'high_tenure' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN 1 END),0)) -
+				(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_tenure;
+-- quais são as top 5 features que mais impactam no churn?
+
+WITH churn_global AS (
+    SELECT 
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+),
+churn_by_combo AS (
+    SELECT 
+        CONCAT_WS(' + ',
+		CASE WHEN PhoneService = 'Yes' THEN 'Phone' END,
+		CASE WHEN InternetService = 'DSL' THEN 'Internet_DSL' END,
+		CASE WHEN InternetService = 'Fiber optic' THEN 'Internet_FiberOptic' END,
+		CASE WHEN OnlineSecurity = 'Yes' THEN 'OnlineSecurity' END,
+		CASE WHEN OnlineBackup = 'Yes' THEN 'OnlineBackup' END,
+		CASE WHEN DeviceProtection = 'Yes' THEN 'DeviceProtection' END,
+		CASE WHEN TechSupport = 'Yes' THEN 'TechSupport' END,
+		CASE WHEN StreamingTV = 'Yes' THEN 'StreamingTV' END,
+		CASE WHEN StreamingMovies = 'Yes' THEN 'StreamingMovies' END
+        ) AS service_combo,
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+    GROUP BY service_combo
+)
+SELECT 
+    cb.service_combo,
+    cb.total_customers,
+    cb.churned_customers,
+    cb.churn_rate,
+    g.churn_rate AS global_churn_rate,
+    ROUND(cb.churn_rate - g.churn_rate, 4) AS diff_vs_global
+FROM churn_by_combo cb
+CROSS JOIN churn_global g
+WHERE cb.service_combo IS NOT NULL
+ORDER BY cb.churn_rate DESC
+LIMIT 5;
