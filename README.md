@@ -121,7 +121,7 @@ FROM contagem;
 No MySQL, a expressão `Churn = 'Yes'` vira **1/0** (verdadeiro/falso). A média (`AVG`) desses valores retorna diretamente a **fração de cancelados**, evitando erros de **divisão inteira** e deixando o SQL mais limpo.
 
 <p align="center">
-  <img src="docs/customer_churn_taxaglobal.png" alt="Contagem de clientes Olist" style="max-width:80%;">
+  <img src="docs/customer_churn_taxaglobal.png" alt="Taxa global" style="max-width:80%;">
 </p>
 
 # Como o churn varia por tipo de contrato (Monthly / One year / Two year)?
@@ -146,9 +146,7 @@ ORDER BY churn_rate DESC
   <img src="docs/customer_churn_contract.png" alt="Contagem de clientes Olist" style="max-width:80%;">
 </p>
 
-# Método de pagamento (electronic check, credit card, bank transfer, mailed check) influencia o churn?
-
-Pergunta: Métodos como `Electronic check`, `Credit card (automatic)`, `Bank transfer (automatic)` e `Mailed check` influenciam o churn?
+## Método de pagamento (electronic check, credit card, bank transfer, mailed check) influência o churn?
 
 Métrica: taxa de churn por método = (cancelados do método / clientes do método) × 100.
 
@@ -164,7 +162,7 @@ GROUP BY PaymentMethod
 ORDER BY churn_rate DESC
 ```
 <p align="center">
-  <img src="docs/customer_churn_paymentmethod.png" alt="Contagem de clientes Olist" style="max-width:80%;">
+  <img src="docs/customer_churn_paymentmethod.png" alt="Taxa por metodo de pagamento" style="max-width:80%;">
 </p>
 
 ## Qual o efeito de InternetService (DSL/Fiber/None) e de Add-ons (OnlineSecurity, TechSupport, etc.) no churn?
@@ -189,7 +187,7 @@ FROM telco_clean;
 Podemos fazer essa analise de duas formas, uma com diversas queries separadas e analisar cada, ou fazer apenas uma query montando uma tabela geral com uma análise mais focada.
 Decidi seguir com apenas uma query, assim conseguimos visualizar melhor o que cada dado representa.
 
-## Query utilizada no MySQL
+### Query utilizada no MySQL
 
 ```sql
 WITH g AS (
@@ -262,7 +260,7 @@ ORDER BY uplift DESC;
 Com essa query mais estensa colocamos filtros diferentes usando o CASE WHEN para filtrar dados onde a função esta positiva (1), e quando esta negativa (0).
 
 <p align="center">
-  <img src="docs/customer_churn_internetandadd.png" alt="Contagem de clientes Olist" style="max-width:80%;">
+  <img src="docs/customer_churn_internetandadd.png" alt="Taxa Serviços" style="max-width:80%;">
 </p>
 
 A análise mostra que o tipo de serviço de internet e os add-ons contratados têm impacto direto nas taxas de churn:
@@ -289,10 +287,337 @@ A análise mostra que o tipo de serviço de internet e os add-ons contratados t�
 - Add-ons de entretenimento aumentam o risco de saída, exigindo estratégias específicas (como bundles com segurança ou descontos em contratos anuais).  
 - O uplift mede essa diferença: se negativo, o recurso ajuda a reduzir churn; se positivo, aumenta o risco.  
 
+## SeniorCitizen, Partner, Dependents alteram a probabilidade de churn?
 
+Para complementar a análise de add-ons e serviços, também foi avaliado o impacto de características demográficas no churn. 
+As variáveis foram tratadas como flags binárias (0/1), o que permitiu calcular as taxas de churn de forma consistente entre os grupos.
 
+Criação da view `telco_life`:
 
+```sql
+CREATE OR REPLACE VIEW telco_life AS 
+SELECT 
+  customerID,
+  is_churn,
+  SeniorCitizen,
+  CASE WHEN Partner    = 'Yes' THEN 1 ELSE 0 END AS is_partner,
+  CASE WHEN Dependents = 'Yes' THEN 1 ELSE 0 END AS is_dependents
+FROM telco_clean;
+```
 
+### Metodologia
+- `SUM(flag)` → total de clientes em cada grupo.  
+- `SUM(CASE WHEN flag=1 THEN is_churn END)/SUM(flag)` → taxa de churn entre quem tem a característica.  
+- `SUM(CASE WHEN flag=0 THEN is_churn END)/SUM(1-flag)` → taxa de churn entre quem não tem.  
+- `uplift` → diferença entre as duas taxas, em pontos percentuais.  
+- `global_churn` → taxa média geral da base, usada como referência.
 
+```sql
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_life
+)
+SELECT 
+		'SeniorCitizen' AS feature,
+        SUM(SeniorCitizen) AS users_with,
+		ROUND(SUM(CASE WHEN SeniorCitizen = 1 THEN is_churn END) / NULLIF(SUM(SeniorCitizen),0),4) AS churn_with,
+		ROUND(SUM(CASE WHEN SeniorCitizen = 0 THEN is_churn END) / NULLIF(SUM(1-SeniorCitizen),0),4) AS churn_without,
+        ROUND(
+			  (SUM(CASE WHEN SeniorCitizen = 1 THEN is_churn END) / NULLIF(SUM(SeniorCitizen),0)) -
+              (SUM(CASE WHEN SeniorCitizen = 0 THEN is_churn END) / NULLIF(SUM(1-SeniorCitizen),0)),4) AS uplift,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) AS global_churn
+FROM telco_life
+UNION ALL
+SELECT 
+		'Partner',
+        SUM(is_partner),
+		ROUND(SUM(CASE WHEN is_partner = 1 THEN is_churn END) / NULLIF(SUM(is_partner),0),4),
+		ROUND(SUM(CASE WHEN is_partner = 0 THEN is_churn END) / NULLIF(SUM(1-is_partner),0),4),
+		ROUND(
+			  (SUM(CASE WHEN is_partner = 1 THEN is_churn END) / NULLIF(SUM(is_partner),0)) -
+              (SUM(CASE WHEN is_partner = 0 THEN is_churn END) / NULLIF(SUM(1-is_partner),0)),4),
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g)
+FROM telco_life
+UNION ALL
+SELECT 
+		'Dependents',
+        SUM(is_dependents),
+		ROUND(SUM(CASE WHEN is_dependents= 1 THEN is_churn END) / NULLIF(SUM(is_dependents),0),4),
+		ROUND(SUM(CASE WHEN is_dependents= 0 THEN is_churn END) / NULLIF(SUM(1-is_dependents),0),4),
+		ROUND(
+			  (SUM(CASE WHEN is_dependents = 1 THEN is_churn END) / NULLIF(SUM(is_dependents),0)) -
+              (SUM(CASE WHEN is_dependents = 0 THEN is_churn END) / NULLIF(SUM(1-is_dependents),0)),4),
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g)
+FROM telco_life;
+```
+<p align="center">
+  <img src="docs/customer_churn_taxaglobal_demograf.png" alt="Taxa demografica" style="max-width:80%;">
+</p>
+
+### Conclusão
+Os resultados indicam que fatores demográficos estão fortemente associados ao churn:
+
+- SeniorCitizes: Clientes idosos apresentam uma taxa de churn de 41,68%, significativamente acima da média global (26,54%). O *uplift* de +18,08pp indica que esse grupo tem uma propensão muito maior a abandonar o serviço, sendo um público que merece atenção especial em estratégias de retenção.
+- Partner: Clientes que possuem um parceiro(a) apresentam uma taxa de churn menor (19,66%) quando comparados aos que não têm (32,96%). O *uplift* negativo de -13,29pp sugere que ter um parceiro está relacionado a uma maior fidelização.
+- Dependents: Usuários com dependentes também são menos propensos a churn (15,45%) em relação aos que não têm dependentes (31,28%), com um *uplift* de -15,83pp, o que reforça a tendência de maior estabilidade em clientes com vínculos familiares.
+
+Essas informações são valiosas para segmentação de campanhas de retenção, já que permitem priorizar grupos de maior risco (idosos sem parceiro/dependentes) com ofertas ou suporte direcionado.
+
+## Faixas de preço (MonthlyCharges) x churn: onde o risco é maior?
+
+O objetivo dessa análise é verificar se o valor cobrado mensalmente (MonthlyCharges) influencia na taxa de cancelamento dos clientes (churn). Para isso, os clientes foram segmentados em três grupos de faixas de preço:
+* low_price: até R$40
+* medium_price: entre R$40 e R$80
+* high_price: acima de R$80
+
+```sql
+SELECT MAX(MonthlyCharges) AS max_charge,
+	   MIN(MonthlyCharges) AS min_charge,
+	   ROUND(AVG(MonthlyCharges),2) AS avg_charge
+FROM customer_churn;
+```
+<p align="center">
+  <img src="docs/customer_churn_price.png" alt="Price média, máximo e mínimo" style="max-width:80%;">
+</p>
+
+### Criação da view
+
+Essa view facilita a segmentação dos clientes de acordo com a faixa de preço, para posterior análise comparativa do churn.
+
+```sql
+CREATE OR REPLACE VIEW telco_price AS
+SELECT 
+  customerID,
+  is_churn,
+  MonthlyCharges,
+  CASE 
+    WHEN MonthlyCharges <= 40 THEN 'low_price'
+    WHEN MonthlyCharges <= 80 THEN 'medium_price'
+    ELSE 'high_price'
+  END AS price_tier
+FROM telco_clean;
+```
+### Query de Análise por Faixa de Preço
+
+```sql
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_price
+)
+SELECT 
+		'Low Price' AS tier,
+		SUM(CASE WHEN price_tier = 'low_price' THEN 1 END) AS sum_tier,
+		ROUND(SUM(CASE WHEN price_tier = 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'low_price' THEN 1 END),0),4) AS churn_with,
+		ROUND(SUM(CASE WHEN price_tier <> 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'low_price' THEN 1 END),0),4) AS churn_without,
+		ROUND(
+				(SUM(CASE WHEN price_tier = 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'low_price' THEN 1 END),0)) -
+				(SUM(CASE WHEN price_tier <> 'low_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'low_price' THEN 1 END),0)),4) AS uplift,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) AS global_churn
+FROM telco_price
+UNION ALL
+SELECT 
+		'Medium Price' ,
+		SUM(CASE WHEN price_tier = 'medium_price' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN price_tier = 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'medium_price' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN price_tier <> 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'medium_price' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN price_tier = 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'medium_price' THEN 1 END),0)) -
+				(SUM(CASE WHEN price_tier <> 'medium_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'medium_price' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_price
+UNION ALL
+SELECT 
+		'High Price' ,
+		SUM(CASE WHEN price_tier = 'high_price' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN price_tier = 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'high_price' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN price_tier <> 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'high_price' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN price_tier = 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier = 'high_price' THEN 1 END),0)) -
+				(SUM(CASE WHEN price_tier <> 'high_price' THEN is_churn END) / NULLIF(SUM(CASE WHEN price_tier <> 'high_price' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_price;
+```
+<p align="center">
+  <img src="docs/customer_churn_price_tier.png" alt="Taxa por faixa de preço" style="max-width:80%;">
+</p>
+
+### Conclusão
+
+A análise das faixas de preço mostra um padrão claro:
+
+- Low Price (até R$40): clientes nessa faixa apresentam a menor taxa de churn (11,64%), bem abaixo da média global (26,54%). O *uplift* negativo de -20,15pp indica que planos baratos funcionam como fator de retenção.
+- Medium Price (R$40 a R$80): esses clientes têm churn de 29,50%, ligeiramente acima da média, com *uplift* de +4,63pp, sugerindo maior vulnerabilidade ao cancelamento nessa faixa intermediária.
+- High Price (acima de R$80): clientes de planos caros apresentam a maior taxa de churn (33,98%), com *uplift* positivo de +11,98pp, mostrando que quanto mais alto o valor da mensalidade, maior a chance de cancelamento.
+
+Em resumo:  
+- Preços mais baixos estão associados à fidelização.  
+- Planos médios apresentam risco moderado.  
+- Planos caros têm o maior risco de churn, evidenciando uma possível percepção negativa de custo-benefício pelos clientes.  
+
+Esses achados reforçam a necessidade de estratégias de retenção específicas para clientes de alta mensalidade, como descontos progressivos, pacotes ou contratos de longo prazo.
+
+## Tenure (tempo de casa) x churn: qual a curva de sobrevivência? Onde ocorre o “vale” de maior risco?
+
+Investigar se o tempo que o cliente permanece na empresa (tenure) influencia sua propensão ao churn. A pergunta-chave é:
+Existe um “vale” de maior risco em que o cliente tem mais chance de cancelar o serviço?
+
+### Levantamento estatístico básico do campo tenure
+
+Primeiramente, foi realizado um levantamento estatístico básico do campo tenure:
+* Máximo tenure: indica o tempo máximo de permanência,
+* Mínimo tenure: tempo mínimo de permanência,
+* Média tenure: média de tempo dos clientes com a empresa.
+
+```sql
+SELECT MAX(tenure) AS max_tenure,
+	   MIN(tenure) AS min_tenure,
+	   ROUND(AVG(tenure),2) AS avg_tenure
+FROM customer_churn;
+```
+
+<p align="center">
+  <img src="docs/customer_churn_tenure.png" alt="Faixas de tenure" style="max-width:80%;">
+</p>
+
+### Criação da View `telco_tenure`
+
+Para facilitar a análise, os clientes foram segmentados em faixas de tempo de casa (tenure):
+
+```sql
+CREATE OR REPLACE VIEW telco_tenure AS
+SELECT 
+  customerID,
+  is_churn,
+  tenure,
+  CASE 
+    WHEN tenure <= 12 THEN 'low_tenure' 
+    WHEN tenure <= 24 THEN 'medium_tenure'
+    ELSE 'high_tenure'
+  END AS tenure_tier
+FROM telco_clean;
+```
+Classificação usada:
+* low_tenure: até 12 meses
+* medium_tenure: de 13 a 24 meses
+* high_tenure: acima de 24 meses
+
+### Cálculo de Churn por Faixa de Tenure
+
+A seguir, foi feito o cálculo das taxas de churn dentro de cada faixa e o uplift (diferença da taxa em relação ao restante dos clientes):
+
+```sql
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_tenure
+)
+SELECT 
+		'Low Tenure' AS tier,
+		SUM(CASE WHEN tenure_tier = 'low_tenure' THEN 1 END) AS sum_tenure,
+		ROUND(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN 1 END),0),4) AS churn_with,
+		ROUND(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN 1 END),0),4) AS churn_without,
+		ROUND(
+				(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'low_tenure' THEN 1 END),0)) -
+				(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'low_tenure' THEN 1 END),0)),4) AS uplift,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) AS global_churn
+FROM telco_tenure
+UNION ALL
+SELECT 
+		'Medium Tenure' ,
+		SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN tenure_tier ='medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'medium_tenure' THEN 1 END),0)) -
+				(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'medium_tenure' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_tenure
+UNION ALL
+SELECT 
+		'High Tenure' ,
+		SUM(CASE WHEN tenure_tier = 'high_tenure' THEN 1 END) ,
+		ROUND(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN 1 END),0),4) ,
+		ROUND(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN 1 END),0),4),
+		ROUND(
+				(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier = 'high_tenure' THEN 1 END),0)) -
+				(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN is_churn END) / NULLIF(SUM(CASE WHEN tenure_tier <> 'high_tenure' THEN 1 END),0)),4) ,
+        (SELECT SUM(is_churn)/COUNT(is_churn) FROM g) 
+FROM telco_tenure;
+```
+
+<p align="center">
+  <img src="docs/customer_churn_tenure_tier.png" alt="Taxa de churn por Faixas de tenure" style="max-width:80%;">
+</p>
+
+### Conclusão
+
+- O maior risco de churn está concentrado nos primeiros 12 meses de contrato. 
+- Clientes com pouco tempo de casa têm uma taxa de churn 30 pontos percentuais maior do que a média, indicando um "vale de risco" nos estágios iniciais da jornada do cliente.
+- Já os clientes com longos períodos de contrato (acima de 24 meses) apresentam comportamento inverso, com baixa propensão ao churn e efeito positivo na retenção.
+- O grupo de tenure médio (entre 13 e 24 meses) mostra pouca variação em relação à média global de churn (26,5%).
+
+Recomendações: Investir em programas de onboarding, benefícios exclusivos nos primeiros meses e estratégias de engajamento desde o início pode reduzir significativamente o churn nos estágios mais críticos.
+
+## Quais são as top 5 combinações de serviços com maior churn?
+
+Para descobrir quais combinações de serviços estão mais associadas à evasão de clientes, foi construída uma query que agrupa todos os serviços contratados por cada cliente em uma única string (`service_combo`) e, em seguida, calcula a taxa de churn para cada combinação.
+
+Query utilizada: 
+
+ ```sql
+WITH churn_global AS (
+    SELECT 
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+),
+churn_by_combo AS (
+    SELECT 
+        CONCAT_WS(' + ',
+		CASE WHEN PhoneService = 'Yes' THEN 'Phone' END,
+		CASE WHEN InternetService = 'DSL' THEN 'Internet_DSL' END,
+		CASE WHEN InternetService = 'Fiber optic' THEN 'Internet_FiberOptic' END,
+		CASE WHEN OnlineSecurity = 'Yes' THEN 'OnlineSecurity' END,
+		CASE WHEN OnlineBackup = 'Yes' THEN 'OnlineBackup' END,
+		CASE WHEN DeviceProtection = 'Yes' THEN 'DeviceProtection' END,
+		CASE WHEN TechSupport = 'Yes' THEN 'TechSupport' END,
+		CASE WHEN StreamingTV = 'Yes' THEN 'StreamingTV' END,
+		CASE WHEN StreamingMovies = 'Yes' THEN 'StreamingMovies' END
+        ) AS service_combo,
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+    GROUP BY service_combo
+)
+SELECT 
+    cb.service_combo,
+    cb.total_customers,
+    cb.churned_customers,
+    cb.churn_rate,
+    g.churn_rate AS global_churn_rate,
+    ROUND(cb.churn_rate - g.churn_rate, 4) AS diff_vs_global
+FROM churn_by_combo cb
+CROSS JOIN churn_global g
+WHERE cb.service_combo IS NOT NULL
+ORDER BY cb.churn_rate DESC
+LIMIT 5;
+```
+
+<p align="center">
+  <img src="docs/customer_churn_5_service.png" alt="Taxa de churn 5 compinações de serviços" style="max-width:80%;">
+</p>
+
+### Conclusão
+
+Com base na análise do churn por combinações de serviços, foi possível identificar padrões relevantes que merecem atenção estratégica:
+
+- Top 5 combinações de serviços com maior churn apresentam taxas superiores a 66%, significativamente acima da média global de 26,5%.
+- A combinação “Internet_DSL + StreamingMovies” lidera o ranking com 72,22% de churn, representando um aumento de 45,68 pontos percentuais em relação à média global.
+- Outras combinações que envolvem Device Protection e StreamingTV também aparecem com alta evasão, sugerindo que o excesso de serviços agregados pode estar associado a maior insatisfação ou custo percebido.
+- A análise utilizou a função `CONCAT_WS()` no SQL para formar combinações únicas de serviços por cliente, permitindo agrupar dados de forma eficiente e identificar padrões de churn por combo.
+- A métrica diff_vs_global comparou cada combo diretamente com a média global, tornando evidente onde o risco de cancelamento é mais crítico.
+
+Esse tipo de análise é fundamental para decisões estratégicas de oferta de pacotes, precificação, foco em retenção e melhoria da experiência do cliente.
 
 
