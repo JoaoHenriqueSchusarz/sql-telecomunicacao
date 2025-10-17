@@ -409,3 +409,55 @@ CROSS JOIN churn_global g
 WHERE cb.service_combo IS NOT NULL
 ORDER BY cb.churn_rate DESC
 LIMIT 5;
+
+-- quais são as top 10 combinações de features que mais impactam no churn?
+WITH churn_global AS (
+    SELECT 
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+),
+churn_by_combo AS (
+    SELECT 
+        CONCAT_WS(' + ',
+        CASE WHEN SeniorCitizen = 1 THEN 'Senior' END,
+        CASE WHEN Partner = 'Yes' THEN 'Partner' END,
+        CASE WHEN Dependents = 'Yes' THEN 'Dependents' END,
+		CASE WHEN PhoneService = 'Yes' THEN 'Phone' END,
+		CASE WHEN InternetService = 'DSL' THEN 'Internet_DSL' END,
+		CASE WHEN InternetService = 'Fiber optic' THEN 'Internet_FiberOptic' END,
+		CASE WHEN OnlineSecurity = 'Yes' THEN 'OnlineSecurity' END,
+		CASE WHEN OnlineBackup = 'Yes' THEN 'OnlineBackup' END,
+		CASE WHEN DeviceProtection = 'Yes' THEN 'DeviceProtection' END,
+		CASE WHEN TechSupport = 'Yes' THEN 'TechSupport' END,
+		CASE WHEN StreamingTV = 'Yes' THEN 'StreamingTV' END,
+		CASE WHEN StreamingMovies = 'Yes' THEN 'StreamingMovies' END,
+		CASE WHEN Contract = 'One year' THEN 'Contr. One Year' END,
+		CASE WHEN Contract = 'Two year' THEN 'Contr. Two years' END,
+		CASE WHEN Contract = 'Month-to-month' THEN 'Contr. Month-to-month' END,
+		CASE WHEN PaymentMethod = 'Mailed check' THEN 'Paym. Mailed' END,
+		CASE WHEN PaymentMethod = 'Electronic check' THEN 'Paym. Electronic' END,
+		CASE WHEN PaymentMethod = 'Credit card (automatic)' THEN 'Paym. Credit card' END,
+		CASE WHEN PaymentMethod = 'Bank transfer (automatic)' THEN 'Paym. Bank transfer' END,
+		CASE WHEN PaperlessBilling = 'Yes' THEN 'Paper Bill' END
+        ) AS service_combo,
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+    GROUP BY service_combo
+    HAVING COUNT(*) >= 15
+)
+SELECT 
+    cb.service_combo,
+    cb.total_customers,
+    cb.churned_customers,
+    cb.churn_rate,
+    g.churn_rate AS global_churn_rate,
+    ROUND(cb.churn_rate - g.churn_rate, 4) AS diff_vs_global
+FROM churn_by_combo cb
+CROSS JOIN churn_global g
+WHERE cb.service_combo IS NOT NULL
+ORDER BY cb.churn_rate DESC
+LIMIT 10;
