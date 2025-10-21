@@ -105,8 +105,6 @@ Fórmula (conceito): `churn_global = (n_cancelados / n_total) * 100`
 ### Query utilizada no MySQL
 
 ```sql
--- Qual é a taxa de churn global?
-
 WITH contagem AS (
   SELECT
     COUNT(customerID) AS customers,
