@@ -96,13 +96,13 @@ SET
                    END;
 ```
 
-# Qual é a taxa de churn global?
+## Qual é a taxa de churn global?
 
 Definição: Percentual de clientes que cancelaram (`Churn = 'Yes'`) em relação ao total de clientes.
 
 Fórmula (conceito): `churn_global = (n_cancelados / n_total) * 100`
 
-## Query utilizada no MySQL
+### Query utilizada no MySQL
 
 ```sql
 -- Qual é a taxa de churn global?
@@ -123,13 +123,13 @@ No MySQL, a expressão `Churn = 'Yes'` vira **1/0** (verdadeiro/falso). A média
   <img src="docs/customer_churn_taxaglobal.png" alt="Taxa global" style="max-width:80%;">
 </p>
 
-# Como o churn varia por tipo de contrato (Monthly / One year / Two year)?
+## Como o churn varia por tipo de contrato (Monthly / One year / Two year)?
 
 Pergunta: Como o churn varia entre `Month-to-month`, `One year` e `Two year`?
 
 Métrica utilizada: taxa de churn por contrato = (cancelados do contrato / clientes do contrato) × 100
 
-## Query utilizada no MySQL
+### Query utilizada no MySQL
 
 ```sql
 SELECT  Contract,
@@ -149,7 +149,7 @@ ORDER BY churn_rate DESC
 
 Métrica: taxa de churn por método = (cancelados do método / clientes do método) × 100.
 
-## Query utilizada no MySQL
+### Query utilizada no MySQL
 
 ```sql
 SELECT  PaymentMethod,
@@ -291,7 +291,7 @@ A análise mostra que o tipo de serviço de internet e os add-ons contratados t�
 Para complementar a análise de add-ons e serviços, também foi avaliado o impacto de características demográficas no churn. 
 As variáveis foram tratadas como flags binárias (0/1), o que permitiu calcular as taxas de churn de forma consistente entre os grupos.
 
-Criação da view `telco_life`:
+### Criação da view `telco_life`:
 
 ```sql
 CREATE OR REPLACE VIEW telco_life AS 
@@ -560,7 +560,7 @@ Recomendações: Investir em programas de onboarding, benefícios exclusivos nos
 
 Para descobrir quais combinações de serviços estão mais associadas à evasão de clientes, foi construída uma query que agrupa todos os serviços contratados por cada cliente em uma única string (`service_combo`) e, em seguida, calcula a taxa de churn para cada combinação.
 
-Query utilizada: 
+### Query utilizada: 
 
  ```sql
 WITH churn_global AS (
@@ -685,7 +685,7 @@ LIMIT 10;
 ```
 
 <p align="center">
-  <img src="docs/customer_churn_featuregeral_tier.png" alt="Taxa de churn 5 compinações de serviços" style="max-width:80%;">
+  <img src="docs/customer_churn_featuregeral_tier.png" alt="Taxa de churn acima da média" style="max-width:80%;">
 </p>
 
 ### Conclusão
@@ -696,3 +696,156 @@ Esses resultados ajudam a definir segmentos de alto risco, que devem ser tratado
 
 ## Qual a perda de receita recorrente associada ao churn (aproximação)?
 
+Esta análise tem como objetivo estimar a perda de receita mensal recorrente associada ao cancelamento de clientes (churn) utilizando a base de dados `telco_clean`.
+
+### Query utilizada
+
+```sql
+SELECT 
+		COUNT(*) AS total_clientes,
+		COUNT(CASE WHEN is_churn = 1 THEN is_churn END)     AS clientes_que_cancelaram,
+        ROUND(100 * COUNT(CASE WHEN is_churn = 1 THEN is_churn END)/ COUNT(*),2)  AS clientes_cancelaram_pct,
+		ROUND(SUM(monthlycharges),2) AS renda_mensal,
+        ROUND(SUM(CASE WHEN is_churn = 1 THEN monthlycharges END),2) AS perda_rendamensal,
+        ROUND(100*SUM(CASE WHEN is_churn = 1 THEN monthlycharges END) / SUM(monthlycharges),2) AS perda_renda_pct
+FROM telco_clean;
+```
+
+<p align="center">
+  <img src="docs/customer_churn_income.png" alt="Perda mensal com a taxa de churn" style="max-width:80%;">
+</p>
+
+### Conclusão
+
+Com base na análise, observamos que aproximadamente 26,5% dos clientes cancelaram seus serviços, representando uma perda de 30,5% da receita mensal da empresa. 
+
+## Entre clientes “Month-to-month”, quais métodos de pagamento elevam/baixam o risco?
+
+A análise calculou a taxa de churn para cada método de pagamento e comparou com a taxa global de churn da base para esse grupo, gerando dois indicadores principais:
+* churn_pct_grupo: taxa de churn daquele grupo específico
+* uplift: diferença entre o churn do grupo e o churn global
+* churn_pct_total: razão entre a taxa do grupo e a taxa global
+
+### Query utilizada
+
+```sql
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_clean
+)
+SELECT
+		PaymentMethod,
+        SUM(CASE WHEN is_churn = 1 THEN 1 END) AS churn_sum,
+        ROUND(COUNT(CASE WHEN is_churn = 1 THEN 1 END) / COUNT(*), 4) AS churn_pct_grupo,
+        (SELECT global_churn FROM g) AS global_churn,
+        ROUND((COUNT(CASE WHEN is_churn = 1 THEN 1 END) / COUNT(*))/ (SELECT global_churn FROM g),4) AS churn_pct_total,
+        ROUND(
+			(COUNT(CASE WHEN is_churn = 1 THEN 1 END) / COUNT(*)) -
+            (SELECT global_churn FROM g),4
+		) AS uplift
+FROM telco_clean
+WHERE contract = 'Month-to-month'
+GROUP BY PaymentMethod
+ORDER BY churn_pct_grupo DESC;
+```
+<p align="center">
+  <img src="docs/customer_churn_payment.png" alt="Taxa de churn por meios de pagamento" style="max-width:80%;">
+</p>
+
+### Conclusão
+
+A forma de pagamento com maior impacto negativo na retenção foi o "Electronic check", com uma taxa de churn de 53,73%, mais que o dobro da média global, apresentando um uplift de +27,19 pontos percentuais.
+
+Métodos automáticos de pagamento, como transferência bancária automática e cartão de crédito automático, apresentaram churn significativamente menor, ainda que acima da média, sugerindo maior estabilidade no relacionamento com o cliente.
+
+O pagamento via cheque enviado por correio (Mailed check) também demonstrou churn acima da média, mas com menor impacto.
+
+## PaperlessBilling impacta churn?
+
+O atributo PaperlessBilling indica se o cliente optou por receber a fatura em formato digital (sim = 'Yes') ou se ainda recebe em papel ('No'). 
+É uma variável categórica binária que pode refletir nível de digitalização, comportamento, conveniência e até engajamento com a empresa.
+
+```sql
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_clean
+)
+SELECT 
+	PaperlessBilling,
+	COUNT(*) AS total_clientes,
+	SUM(is_churn) AS churn_count,
+	ROUND(AVG(is_churn), 4) AS churn_pct,
+	(SELECT global_churn FROM g) AS global_churn,
+	ROUND(AVG(is_churn) - (SELECT global_churn FROM g), 4) AS uplift,
+	ROUND(AVG(is_churn) / (SELECT global_churn FROM g), 2) AS churn_pct_total
+FROM telco_clean
+GROUP BY PaperlessBilling;
+```
+<p align="center">
+  <img src="docs/customer_churn_paper.png" alt="Taxa de churn por PaperlessBilling" style="max-width:80%;">
+</p>
+
+### Conclusão
+
+A análise mostra que clientes que optam por fatura digital (PaperlessBilling = Yes) possuem uma taxa de churn significativamente maior (33.57%) do que aqueles que recebem fatura impressa (16.33%).
+* A taxa global de churn da base é de 26.54%.
+* O uplift para clientes com PaperlessBilling é de +7.03 pontos percentuais acima da média global.
+* Já os clientes sem PaperlessBilling estão 10.21 pontos abaixo da média.
+
+Interpretação: clientes com fatura digital têm 1,26 vezes mais chance de cancelar o serviço do que a média. Isso pode estar associado à facilidade de cancelar digitalmente, menor engajamento físico com a marca ou perfil de cliente mais volátil.
+
+# Conclusão do projeto Telco Customer Churn
+
+O estudo de Churn de Clientes da Telco permitiu compreender com profundidade os fatores que mais impactam a evasão e a fidelização na base de clientes. 
+Através de consultas SQL estruturadas e visualizações em BI, foi possível identificar padrões de comportamento e segmentos de maior risco, fornecendo subsídios práticos para estratégias de retenção e melhoria da experiência do cliente.
+
+## Principais Descobertas
+
+### Taxa Global de Churn
+- A média geral de cancelamento foi de 26,54%, o que significa que cerca de um em cada quatro clientes deixou a empresa no período analisado.
+
+### Tipo de Contrato
+- O contrato “Month-to-month” concentra o maior churn (superior a 43%), enquanto contratos anuais e bienais apresentam taxas muito menores — evidenciando que a fidelização contratual é o principal fator de retenção.
+
+### Método de Pagamento
+- O pagamento via Electronic Check é o de maior risco, com churn de 53,7%, mais que o dobro da média global. Já pagamentos automáticos (débito em conta e cartão de crédito) estão associados a clientes mais estáveis e engajados.
+
+### Serviços e Add-ons
+- Recursos como TechSupport e OnlineSecurity reduzem significativamente o churn (uplift negativo de até −16pp), reforçando o papel da percepção de suporte e segurança na fidelização.
+- Já add-ons de entretenimento (StreamingTV, StreamingMovies) aumentam o risco, sugerindo que clientes que contratam apenas lazer têm menor vínculo com a empresa.
+
+### Perfil Demográfico
+- Idosos (SeniorCitizen): maior taxa de churn (41,7%), necessitando atenção especial.
+- Clientes com Partner ou Dependents: apresentam churn bem abaixo da média, sendo grupos naturalmente mais estáveis.
+
+### Faixas de Preço (MonthlyCharges)
+- Planos caros (> R$80) possuem churn elevado (~34%).
+- Planos baratos (≤ R$40) retêm melhor os clientes (churn ~11%).
+Isso reforça que percepção de custo-benefício é determinante para a permanência.
+
+### Tempo de Casa (Tenure)
+- O risco de churn é altíssimo nos primeiros 12 meses, caindo drasticamente após o segundo ano. Investir em onboarding e engajamento inicial é essencial para reduzir evasões precoces.
+
+### PaperlessBilling (Fatura Digital)
+- Clientes com fatura digital apresentaram churn de 33,57%, muito acima dos 16,33% dos clientes com fatura impressa.
+- O uplift de +7,03pp sugere que clientes digitais são mais propensos ao cancelamento, talvez por perfil mais jovem e menos fiel ou por maior autonomia para encerrar contratos online.
+
+## Síntese Estratégica
+O modelo analítico revelou que o churn é multifatorial, resultando da combinação entre:
+* Fatores contratuais (prazo e forma de pagamento),
+* Percepção de valor (preço e serviços adicionais),
+* Perfil comportamental e demográfico (idade, dependência e digitalização).
+
+## As principais oportunidades para redução de churn incluem:
+* Campanhas de retenção direcionadas a clientes “Month-to-month” e com Electronic Check;
+* Incentivos para migração para contratos anuais e métodos de pagamento automáticos;
+* Ofertas personalizadas de segurança e suporte para perfis de risco;
+* Ações de onboarding e engajamento digital nos primeiros meses de contrato;
+* Análise contínua via BI, para monitorar evoluções e ajustar estratégias.
+
+## Conclusão Final
+
+Com base nas análises realizadas, conclui-se que a fidelização de clientes na Telco depende diretamente da combinação entre relacionamento contínuo, percepção de valor e conveniência.
+A estrutura de queries desenvolvida em MySQL permitiu explorar a base de forma granular, enquanto as visualizações em Business Intelligence traduziram os resultados em insights estratégicos.
+
+Este projeto demonstra como a integração entre dados operacionais, análise estatística e pensamento de negócio é capaz de transformar um dataset em decisões de impacto real, orientando a empresa para ações assertivas de retenção e crescimento sustentável.
