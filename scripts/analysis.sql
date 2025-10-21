@@ -461,3 +461,97 @@ CROSS JOIN churn_global g
 WHERE cb.service_combo IS NOT NULL
 ORDER BY cb.churn_rate DESC
 LIMIT 10;
+-- Quais segmentos têm churn acima da média (uplift) e devem ser priorizados?
+WITH churn_global AS (
+    SELECT 
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+),
+churn_by_combo AS (
+    SELECT 
+        CONCAT_WS(' + ',
+        CASE WHEN SeniorCitizen = 1 THEN 'Senior' END,
+        CASE WHEN Partner = 'Yes' THEN 'Partner' END,
+        CASE WHEN Dependents = 'Yes' THEN 'Dependents' END,
+		CASE WHEN PhoneService = 'Yes' THEN 'Phone' END,
+		CASE WHEN InternetService = 'DSL' THEN 'Internet_DSL' END,
+		CASE WHEN InternetService = 'Fiber optic' THEN 'Internet_FiberOptic' END,
+		CASE WHEN OnlineSecurity = 'Yes' THEN 'OnlineSecurity' END,
+		CASE WHEN OnlineBackup = 'Yes' THEN 'OnlineBackup' END,
+		CASE WHEN DeviceProtection = 'Yes' THEN 'DeviceProtection' END,
+		CASE WHEN TechSupport = 'Yes' THEN 'TechSupport' END,
+		CASE WHEN StreamingTV = 'Yes' THEN 'StreamingTV' END,
+		CASE WHEN StreamingMovies = 'Yes' THEN 'StreamingMovies' END,
+		CASE WHEN Contract = 'One year' THEN 'Contr. One Year' END,
+		CASE WHEN Contract = 'Two year' THEN 'Contr. Two years' END,
+		CASE WHEN Contract = 'Month-to-month' THEN 'Contr. Month-to-month' END,
+		CASE WHEN PaymentMethod = 'Mailed check' THEN 'Paym. Mailed' END,
+		CASE WHEN PaymentMethod = 'Electronic check' THEN 'Paym. Electronic' END,
+		CASE WHEN PaymentMethod = 'Credit card (automatic)' THEN 'Paym. Credit card' END,
+		CASE WHEN PaymentMethod = 'Bank transfer (automatic)' THEN 'Paym. Bank transfer' END,
+		CASE WHEN PaperlessBilling = 'Yes' THEN 'Paper Bill' END
+        ) AS service_combo,
+        COUNT(*) AS total_customers,
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS churned_customers,
+        ROUND(AVG(CASE WHEN Churn = 'Yes' THEN 1.0 ELSE 0 END), 4) AS churn_rate
+    FROM telco_clean
+    GROUP BY service_combo
+    HAVING COUNT(*) >= 15
+)
+SELECT 
+    cb.service_combo,
+    cb.total_customers,
+    cb.churned_customers,
+    cb.churn_rate,
+    g.churn_rate AS global_churn_rate,
+    ROUND(cb.churn_rate - g.churn_rate, 4) AS diff_vs_global
+FROM churn_by_combo cb
+CROSS JOIN churn_global g
+WHERE cb.service_combo IS NOT NULL
+ORDER BY cb.churn_rate DESC
+LIMIT 10;
+-- Qual a perda de receita recorrente associada ao churn (aproximação)?
+SELECT 
+		COUNT(*) AS total_clientes,
+		COUNT(CASE WHEN is_churn = 1 THEN is_churn END)     AS clientes_que_cancelaram,
+        ROUND(100 * COUNT(CASE WHEN is_churn = 1 THEN is_churn END)/ COUNT(*),2)  AS clientes_cancelaram_pct,
+		ROUND(SUM(monthlycharges),2) AS renda_mensal,
+        ROUND(SUM(CASE WHEN is_churn = 1 THEN monthlycharges END),2) AS perda_rendamensal,
+        ROUND(100*SUM(CASE WHEN is_churn = 1 THEN monthlycharges END) / SUM(monthlycharges),2) AS perda_renda_pct
+FROM telco_clean;
+--  Entre clientes “Month-to-month”, quais métodos de pagamento elevam/baixam o risco?
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_clean
+)
+SELECT
+		PaymentMethod,
+        SUM(CASE WHEN is_churn = 1 THEN 1 END) AS churn_sum,
+        ROUND(COUNT(CASE WHEN is_churn = 1 THEN 1 END) / COUNT(*), 4) AS churn_pct_grupo,
+        (SELECT global_churn FROM g) AS global_churn,
+        ROUND((COUNT(CASE WHEN is_churn = 1 THEN 1 END) / COUNT(*))/ (SELECT global_churn FROM g),4) AS churn_pct_total,
+        ROUND(
+			(COUNT(CASE WHEN is_churn = 1 THEN 1 END) / COUNT(*)) -
+            (SELECT global_churn FROM g),4
+		) AS uplift
+FROM telco_clean
+WHERE contract = 'Month-to-month'
+GROUP BY PaymentMethod
+ORDER BY churn_pct_grupo DESC;
+-- PaperlessBilling impacta churn?
+WITH g AS (
+	SELECT SUM(is_churn)/COUNT(is_churn) AS global_churn
+	FROM telco_clean
+)
+SELECT 
+	PaperlessBilling,
+	COUNT(*) AS total_clientes,
+	SUM(is_churn) AS churn_count,
+	ROUND(AVG(is_churn), 4) AS churn_pct,
+	(SELECT global_churn FROM g) AS global_churn,
+	ROUND(AVG(is_churn) - (SELECT global_churn FROM g), 4) AS uplift,
+	ROUND(AVG(is_churn) / (SELECT global_churn FROM g), 2) AS churn_pct_total
+FROM telco_clean
+GROUP BY PaperlessBilling;
