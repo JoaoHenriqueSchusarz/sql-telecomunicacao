@@ -905,11 +905,9 @@ Para transformar os insights do modelo de churn em uma visualização clara e es
   - Serviços utilizados (Streaming, Segurança, Backup, Suporte).
 - Compara clientes que usam um serviço vs. os que não usam.
   
- *Visual do dashboard:*
-
-![Dashboard Churn Telecom](dashboard/dashboard_churn_telecomunicao.png)
-
-
+<p align="center">
+  <img src="dashboard/Dashboard_churn_telecomunicacao.png" alt="Dashboard1" style="max-width:80%;">
+</p>
 
 ### Dashboard 2 - Impacto Financeiro do Churn
 
@@ -920,8 +918,8 @@ Para transformar os insights do modelo de churn em uma visualização clara e es
   - Faturamento por método de pagamento.
   - % de faturamento perdido devido ao churn.
 
-*Visual do dashboard:*
-
-![Dashboard Churn Faturamento](dashboard/dashboard_churn_faturamento.png)
+<p align="center">
+  <img src="dashboard/Dashboard_churn_faturamento.png" alt="Dashboard2" style="max-width:80%;">
+</p>
 
 
