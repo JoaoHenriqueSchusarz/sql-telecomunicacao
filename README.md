@@ -1,4 +1,4 @@
-# Telco Customer Churn — Plano de Análises (MySQL + TABLEAU)
+# Telco Customer Churn — Plano de Análises (MySQL + PowerBI)
 
 Este projeto utiliza o [Conjunto de dados público de retenção e controle de contratos em uma empresa de telecomunicação](https://www.kaggle.com/datasets/blastchar/telco-customer-churn), disponível no Kaggle.
 
@@ -889,5 +889,39 @@ faixa_price = SWITCH(
     "High Price"
 )
 ```
+
+## Dashboards Power BI – Análise de Churn em Telecomunicações
+
+Para transformar os insights do modelo de churn em uma visualização clara e estratégica, desenvolvi dois dashboards interativos no Power BI, permitindo compreender a perda de clientes e o impacto no faturamento com base em diversos fatores, como tipo de serviço, contrato, método de pagamento, e faixa de preço.
+
+
+### Dashboard 1 - Visão Geral do Churn
+
+- Exibe a taxa global de churn (26,54%).
+- Analisa distribuição de churn por:
+  - Gênero, estado civil, filhos e idade.
+  - Faixa de preço (High, Medium, Low).
+  - Tempo de contrato (tenure).
+  - Serviços utilizados (Streaming, Segurança, Backup, Suporte).
+- Compara clientes que usam um serviço vs. os que não usam.
+  
+ *Visual do dashboard:*
+
+![Dashboard Churn Telecom](docs/dashboard_churn_telecomunicao.png)
+
+
+
+### Dashboard 2 - Impacto Financeiro do Churn
+
+- Mostra o faturamento perdido por churn: R$ 139,13 mil.
+- Analisa:
+  - Ticket médio por tipo de contrato (`Month-to-month`, `One year`, `Two year`).
+  - Faturamento ativo vs. cancelado.
+  - Faturamento por método de pagamento.
+  - % de faturamento perdido devido ao churn.
+
+*Visual do dashboard:*
+
+![Dashboard Churn Faturamento](docs/dashboard_churn_faturamento.png)
 
 
