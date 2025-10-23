@@ -907,7 +907,7 @@ Para transformar os insights do modelo de churn em uma visualização clara e es
   
  *Visual do dashboard:*
 
-![Dashboard Churn Telecom](docs/dashboard_churn_telecomunicao.png)
+![Dashboard Churn Telecom](dashboard/dashboard_churn_telecomunicao.png)
 
 
 
@@ -922,6 +922,6 @@ Para transformar os insights do modelo de churn em uma visualização clara e es
 
 *Visual do dashboard:*
 
-![Dashboard Churn Faturamento](docs/dashboard_churn_faturamento.png)
+![Dashboard Churn Faturamento](dashboard/dashboard_churn_faturamento.png)
 
 
