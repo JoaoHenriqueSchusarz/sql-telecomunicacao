@@ -1,4 +1,4 @@
-# Telco Customer Churn — Plano de Análises (MySQL + BI)
+# Telco Customer Churn — Plano de Análises (MySQL + TABLEAU)
 
 Este projeto utiliza o [Conjunto de dados público de retenção e controle de contratos em uma empresa de telecomunicação](https://www.kaggle.com/datasets/blastchar/telco-customer-churn), disponível no Kaggle.
 
@@ -171,7 +171,7 @@ Para analisar todos os add-ons de forma comparável, criei uma view que transfor
 CREATE OR REPLACE VIEW telco_features AS
 SELECT
   customerID,
-  is_churn,                 -- 1 = churnou, 0 = permaneceu
+  is_churn,                 
   InternetService,
   CASE WHEN OnlineSecurity   = 'Yes' THEN 1 ELSE 0 END AS f_Security,
   CASE WHEN OnlineBackup     = 'Yes' THEN 1 ELSE 0 END AS f_Backup,
@@ -780,7 +780,7 @@ FROM telco_clean
 GROUP BY PaperlessBilling;
 ```
 <p align="center">
-  <img src="docs/customer_churn_paper.png" alt="Taxa de churn por PaperlessBilling" style="max-width:80%;">
+  <img src="docs/customer_churn_papers.png" alt="Taxa de churn por PaperlessBilling" style="max-width:80%;">
 </p>
 
 ### Conclusão
@@ -847,3 +847,47 @@ Com base nas análises realizadas, conclui-se que a fidelização de clientes na
 A estrutura de queries desenvolvida em MySQL permitiu explorar a base de forma granular, enquanto as visualizações em Business Intelligence traduziram os resultados em insights estratégicos.
 
 Este projeto demonstra como a integração entre dados operacionais, análise estatística e pensamento de negócio é capaz de transformar um dataset em decisões de impacto real, orientando a empresa para ações assertivas de retenção e crescimento sustentável.
+
+# Dashboard Power BI
+
+Para a melhor compreensão e permitir visualizar o cenário atual desse projeto, escolhemos criar um dashboard com o auxilio da ferramenta Power BI.
+
+## Criação de Colunas para Calculo
+
+### is_churn
+
+```dax
+is_churn = IF('Telco-Customer-Churn'[Churn]="Yes",1,0)
+```
+
+### is_onlinesecurity
+```dax
+is_onlinesecurity = IF('Telco-Customer-Churn'[OnlineSecurity]="Yes",1,0)
+```
+
+O mesmo calculo para transformar os dados em boleanos foi realizado para as colunas: Online Backup, Device Protection, Tech Support, Streaming TV e Streaming Movies.
+
+### faixa_tenure
+
+```dax
+faixa_tenure = SWITCH(
+    TRUE(),
+    [Tenure] <= 12, "Até 12 meses",
+    [Tenure] <= 24, "13 a 24 meses",
+    [Tenure] <= 48, "25 a 48 meses",
+    "Acima de 48 meses"
+)
+```
+
+### faixa_price
+
+```dax
+faixa_price = SWITCH(
+    TRUE(),
+    [MonthlyCharges] <= 40, "Low Price",
+    [MonthlyCharges] <= 80, "Medium Price",
+    "High Price"
+)
+```
+
+
